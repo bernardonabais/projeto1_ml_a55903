@@ -1,0 +1,7 @@
+missing,outliers,acc_val,prec_val,rec_val,f1_val,auc_val,auc_teste
+simples,nenhum,0.8168,0.5588,0.6856,0.6157,0.8675,0.8563
+simples,capping,0.8168,0.5588,0.6856,0.6157,0.8675,0.8563
+simples,filtragem,0.8179,0.5617,0.6804,0.6154,0.8668,0.8568
+agrupada,nenhum,0.8157,0.557,0.6804,0.6125,0.8672,0.856
+agrupada,capping,0.8157,0.557,0.6804,0.6125,0.8672,0.856
+agrupada,filtragem,0.8168,0.5598,0.6753,0.6121,0.8666,0.8562

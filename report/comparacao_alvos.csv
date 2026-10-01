@@ -1,0 +1,4 @@
+config,n_features,MAE_val_HKD,RMSE_val_HKD,R2_val_HKD
+"Preço bruto, sem FE",92,338.0,708.2,0.4313
+"Log-preço, sem FE",92,280.0,694.1,0.4538
+"Log-preço, com polinomiais e interações",101,273.3,671.0,0.4895
