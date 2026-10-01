@@ -1,7 +1,7 @@
 Imputação,Outliers,MAE,RMSE,R2
-simples,nenhuma,0.361,0.5164,0.6634
-simples,capping,0.3555,0.4932,0.6772
-simples,filtragem,0.3603,0.5202,0.6584
-agrupada,nenhuma,0.361,0.5167,0.663
-agrupada,capping,0.3555,0.4935,0.6769
-agrupada,filtragem,0.3604,0.5205,0.6581
+simples,nenhuma,0.3548,0.51,0.6717
+simples,capping,0.3541,0.5104,0.6713
+simples,filtragem,0.3543,0.5131,0.6678
+agrupada,nenhuma,0.355,0.5103,0.6713
+agrupada,capping,0.3542,0.5107,0.6709
+agrupada,filtragem,0.3545,0.5133,0.6675

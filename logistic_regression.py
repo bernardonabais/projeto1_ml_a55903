@@ -12,24 +12,30 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # 1. DEFINIR CLASSE POSITIVA
 # ---------------------------------------------------------------------------
-def definir_classe_positiva(df, coluna_preco="price",
+def definir_classe_positiva(df, df_ref=None, coluna_preco="price",
                              grupos=("room_type", "neighbourhood_cleansed"),
                              percentil=0.80):
     """
     Marca como classe positiva (1) os alojamentos cujo preço está acima
-    do percentil especificado DENTRO do seu grupo (room_type × bairro).
+    do percentil do seu grupo (room_type x bairro).
 
-    Devolve um vetor 0/1 do tamanho de df.
+    Os limiares são aprendidos em 'df_ref' (o conjunto de treino) e aplicados
+    a 'df'. Se df_ref for None, usa o próprio df (caso do treino).
+    Grupos sem limiar em df_ref caem no percentil global de df_ref.
     """
-    df = df.copy()
-    limiares = df.groupby(list(grupos))[coluna_preco].quantile(percentil)
+    if df_ref is None:
+        df_ref = df
+
+    limiares = df_ref.groupby(list(grupos))[coluna_preco].quantile(percentil)
+    limiares = limiares.dropna()
+    limite_global = df_ref[coluna_preco].quantile(percentil)
+
     y = []
     for _, linha in df.iterrows():
         chave = tuple(linha[g] for g in grupos)
-        limite = limiares.get(chave, df[coluna_preco].quantile(percentil))
+        limite = limiares.get(chave, limite_global)
         y.append(int(linha[coluna_preco] > limite))
     return np.array(y)
-
 
 # ---------------------------------------------------------------------------
 # 2. SIGMOID

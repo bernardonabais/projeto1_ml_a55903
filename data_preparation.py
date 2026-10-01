@@ -9,10 +9,7 @@ import json
 import numpy as np
 import pandas as pd
 
-
-# ---------------------------------------------------------------------------
 # 1. CARREGAR DADOS
-# ---------------------------------------------------------------------------
 def carregar_dados(caminho="data/listings.csv"):
     """Carrega o CSV, converte o preço, remove linhas sem preço e colunas vazias."""
     df = pd.read_csv(caminho, low_memory=False)
@@ -22,9 +19,9 @@ def carregar_dados(caminho="data/listings.csv"):
     return df
 
 
-# ---------------------------------------------------------------------------
+
 # 2. FEATURES DE DURAÇÃO
-# ---------------------------------------------------------------------------
+
 def criar_features_duracao(df):
     """Cria 'noites' e 'long_stay' a partir das datas de check-in/check-out."""
     df = df.copy()
@@ -35,9 +32,8 @@ def criar_features_duracao(df):
     return df
 
 
-# ---------------------------------------------------------------------------
 # 3. AMENITIES (top 15 binárias)
-# ---------------------------------------------------------------------------
+
 def criar_features_amenities(df, top_n=15):
     """Cria 'n_amenities' e uma coluna binária por cada uma das top_n amenities."""
     df = df.copy()
@@ -54,9 +50,9 @@ def criar_features_amenities(df, top_n=15):
     return df
 
 
-# ---------------------------------------------------------------------------
+
 # 4. BATHROOMS a partir do texto
-# ---------------------------------------------------------------------------
+
 def extrair_bathrooms(df):
     """Preenche valores em falta de 'bathrooms' com o número extraído de 'bathrooms_text'."""
     df = df.copy()
@@ -65,9 +61,8 @@ def extrair_bathrooms(df):
     return df
 
 
-# ---------------------------------------------------------------------------
+
 # 5. SPLIT TREINO / VALIDAÇÃO / TESTE
-# ---------------------------------------------------------------------------
 def split_treino_val_teste(df, seed=42):
     """Divide em 70% treino, 15% validação, 15% teste de forma reprodutível."""
     df = df.sample(frac=1, random_state=seed).reset_index(drop=True)
@@ -80,9 +75,7 @@ def split_treino_val_teste(df, seed=42):
     return treino, val, teste
 
 
-# ---------------------------------------------------------------------------
 # 6. TRATAMENTO DE MISSING VALUES
-# ---------------------------------------------------------------------------
 def tratar_missing(treino, outros, estrategia="simples"):
     """
     Imputa missing values usando uma das duas políticas:
@@ -131,9 +124,8 @@ def tratar_missing(treino, outros, estrategia="simples"):
     return treino, outros
 
 
-# ---------------------------------------------------------------------------
+
 # 7. TRATAMENTO DE OUTLIERS
-# ---------------------------------------------------------------------------
 def tratar_outliers(treino, outros, estrategia="nenhuma"):
     """
     Trata outliers no preço com uma de três estratégias:
@@ -154,8 +146,9 @@ def tratar_outliers(treino, outros, estrategia="nenhuma"):
         iqr = q3 - q1
         lim_inf = np.exp(q1 - 1.5 * iqr)
         lim_sup = np.exp(q3 + 1.5 * iqr)
-        for d in [treino] + outros:
-            d["price"] = d["price"].clip(lower=lim_inf, upper=lim_sup)
+        # Só o treino é alterado: a validação e o teste mantêm os preços reais,
+        # para que as métricas meçam o erro contra a realidade.
+        treino["price"] = treino["price"].clip(lower=lim_inf, upper=lim_sup)
 
     elif estrategia == "filtragem":
         # IQR
@@ -176,9 +169,7 @@ def tratar_outliers(treino, outros, estrategia="nenhuma"):
     return treino, outros
 
 
-# ---------------------------------------------------------------------------
 # 8. MATRIZ FINAL (one-hot + escala)
-# ---------------------------------------------------------------------------
 def preparar_matriz_final(treino, outros, features_num, features_cat,
                           polinomiais=False, interacoes=False):
     """
@@ -213,7 +204,7 @@ def preparar_matriz_final(treino, outros, features_num, features_cat,
         X_treino, _ = X_treino.align(X, join="outer", axis=1, fill_value=0)
     Xs_outros = [X.reindex(columns=X_treino.columns, fill_value=0) for X in Xs_outros]
 
-    # Standardizar TODAS as colunas numéricas contínuas (inclui os polinomiais)
+        # Standardizar as features numéricas e os polinomiais (one-hot fica em 0/1)
     cols_escalar = [c for c in features_num if c in X_treino.columns]
     if polinomiais:
         cols_escalar += [c for c in ["accommodates_sq", "n_amenities_sq"]
@@ -229,9 +220,23 @@ def preparar_matriz_final(treino, outros, features_num, features_cat,
 
     return X_treino, Xs_outros, y_treino, ys_outros
 
-# ---------------------------------------------------------------------------
-# 9. GUARDAR MATRIZ FINAL EM DISCO
-# ---------------------------------------------------------------------------
+
+
+# 9. LISTAS DE FEATURES
+def listar_features(df):
+    """
+    Devolve as listas de features usadas pelos modelos.
+    Centralizada aqui para que o pipeline e o k-fold usem sempre as mesmas.
+    """
+    features_num = ["accommodates", "bedrooms", "bathrooms", "beds",
+                    "minimum_nights", "noites", "n_amenities", "long_stay",
+                    "review_scores_rating", "number_of_reviews"]
+    features_cat = ["room_type", "neighbourhood_cleansed"]
+    features_bin = [c for c in df.columns if c.startswith("tem_")]
+    return features_num + features_bin, features_cat
+
+
+# 10. GUARDAR MATRIZ FINAL EM DISCO
 def guardar_matriz(X_treino, Xs_outros, y_treino, ys_outros,
                    pasta="data/processado"):
     """Guarda as matrizes de features e os vetores alvo em ficheiros CSV."""
@@ -247,12 +252,14 @@ def guardar_matriz(X_treino, Xs_outros, y_treino, ys_outros,
 
     print(f"Matrizes guardadas em {pasta}/")
 
-# ---------------------------------------------------------------------------
-# 10. Relações finais
-# ---------------------------------------------------------------------------
+
+
+# 11. PIPELINE COMPLETO
 def pipeline_completo(caminho="data/listings.csv",
                       estrategia_missing="simples",
                       estrategia_outliers="nenhuma",
+                      polinomiais=False,
+                      interacoes=False,
                       seed=42,
                       guardar=False):
     """Corre o pipeline todo com as estratégias escolhidas."""
@@ -265,14 +272,11 @@ def pipeline_completo(caminho="data/listings.csv",
     treino, (val, teste) = tratar_missing(treino, [val, teste], estrategia_missing)
     treino, (val, teste) = tratar_outliers(treino, [val, teste], estrategia_outliers)
 
-    features_num = ["accommodates", "bedrooms", "bathrooms", "beds",
-                    "minimum_nights", "noites", "n_amenities", "long_stay"]
-    features_cat = ["room_type", "property_type", "neighbourhood_cleansed"]
-    features_bin = [c for c in treino.columns if c.startswith("tem_")]
-    features_num = features_num + features_bin
+    features_num, features_cat = listar_features(treino)
 
     X_treino, Xs_outros, y_treino, ys_outros = preparar_matriz_final(
-        treino, [val, teste], features_num, features_cat
+        treino, [val, teste], features_num, features_cat,
+        polinomiais=polinomiais, interacoes=interacoes
     )
 
     if guardar:
@@ -281,9 +285,9 @@ def pipeline_completo(caminho="data/listings.csv",
     return X_treino, Xs_outros, y_treino, ys_outros
 
 
-# ---------------------------------------------------------------------------
-# 10. K-FOLD CROSS-VALIDATION (sem leakage)
-# ---------------------------------------------------------------------------
+
+
+# 12. K-FOLD CROSS-VALIDATION (sem leakage)
 def kfold_indices(n, k=5, seed=42):
     """Divide n amostras em k folds. Devolve lista de (indices_treino, indices_val)."""
     rng = np.random.default_rng(seed)
@@ -308,39 +312,7 @@ def preparar_fold(df, treino_idx, val_idx,
     treino, (val,) = tratar_missing(treino, [val], estrategia_missing)
     treino, (val,) = tratar_outliers(treino, [val], estrategia_outliers)
 
-    features_num = ["accommodates", "bedrooms", "bathrooms", "beds",
-                    "minimum_nights", "noites", "n_amenities", "long_stay"]
-    features_cat = ["room_type", "property_type", "neighbourhood_cleansed"]
-    features_bin = [c for c in treino.columns if c.startswith("tem_")]
-    features_num = features_num + features_bin
+    features_num, features_cat = listar_features(treino)
 
     return preparar_matriz_final(treino, [val], features_num, features_cat,
                                   polinomiais=polinomiais, interacoes=interacoes)
-
-
-# ---------------------------------------------------------------------------
-# 11. FEATURES POLINOMIAIS E INTERAÇÕES
-# ---------------------------------------------------------------------------
-def adicionar_polinomiais_interacoes(X, polinomiais=True, interacoes=True):
-    """
-    Acrescenta à matriz X:
-      - termos polinomiais: quadrado de accommodates e de n_amenities
-      - interações: long_stay x (cada coluna de room_type)
-
-    Recebe e devolve um DataFrame.
-    """
-    X = X.copy()
-
-    if polinomiais:
-        if "accommodates" in X.columns:
-            X["accommodates_sq"] = X["accommodates"] ** 2
-        if "n_amenities" in X.columns:
-            X["n_amenities_sq"] = X["n_amenities"] ** 2
-
-    if interacoes:
-        cols_room = [c for c in X.columns if c.startswith("room_type_")]
-        if "long_stay" in X.columns:
-            for c in cols_room:
-                X[f"long_stay_x_{c}"] = X["long_stay"] * X[c]
-
-    return X
