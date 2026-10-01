@@ -39,20 +39,24 @@ qualquer das duas formas, bastando ajustar o nome.
 ---
 
 ## 3. Estrutura do projeto
-'projeto1_ml_a55903/
+## 3. Estrutura do projeto
+
+```text
+projeto1_ml_a55903/
 ├── data/
-│ ├── listings.csv # Dataset original (descomprimido)
-│ └── processado/ # Matrizes finais geradas pelo pipeline
-├── figures/ # Figuras geradas pelo notebook
+│   ├── listings.csv                # Dataset original (descomprimido)
+│   └── processado/                 # Matrizes finais geradas pelo pipeline
+├── figures/                       # Figuras geradas pelo notebook
 ├── report/
-│ ├── ablacoes.csv # Tabela comparativa das estratégias
-│ ├── coeficientes_linear.csv
-│ └── coeficientes_logistica.csv
-├── exploracao.ipynb # Análise exploratória e experiências
-├── data_preparation.py # Pipeline de pré-processamento
-├── linear_regression.py # Regressão linear (gradient descent + L2)
-├── logistic_regression.py # Regressão logística (gradient descent)
-└── README.md'
+│   ├── ablacoes.csv               # Tabela comparativa das estratégias
+│   ├── coeficientes_linear.csv
+│   └── coeficientes_logistica.csv
+├── exploracao.ipynb                # Análise exploratória e experiências
+├── data_preparation.py             # Pipeline de pré-processamento
+├── linear_regression.py            # Regressão linear (gradient descent + L2)
+├── logistic_regression.py          # Regressão logística (gradient descent)
+└── README.md
+```
 
 ---
 
