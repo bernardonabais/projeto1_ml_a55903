@@ -4,7 +4,7 @@ data_preparation.py
 Pré-processamento dos dados do Airbnb de Hong Kong para o Projeto 1 de ML.
 Cada função trata de uma parte específica do pipeline.
 """
-
+import os
 import json
 import numpy as np
 import pandas as pd
@@ -117,7 +117,8 @@ def tratar_missing(treino, outros, estrategia="simples"):
     elif estrategia == "agrupada":
         for col in cols_num:
             medianas = treino.groupby(["room_type", "accommodates"])[col].median()
-            med_geral = treino[col].median()   # fallback
+            medianas = medianas.dropna()        # grupos sem dados caem no fallback
+            med_geral = treino[col].median()    # fallback
             for d in [treino] + outros:
                 d[col] = d.apply(
                     lambda r: r[col] if pd.notna(r[col])
@@ -178,44 +179,82 @@ def tratar_outliers(treino, outros, estrategia="nenhuma"):
 # ---------------------------------------------------------------------------
 # 8. MATRIZ FINAL (one-hot + escala)
 # ---------------------------------------------------------------------------
-def preparar_matriz_final(treino, outros, features_num, features_cat):
+def preparar_matriz_final(treino, outros, features_num, features_cat,
+                          polinomiais=False, interacoes=False):
     """
-    One-hot encoding das categóricas, standardização das numéricas (média/std do treino).
-    Devolve as matrizes X e os vetores y (log-preço).
+    One-hot das categóricas, termos polinomiais/interações (antes de escalar),
+    e standardização com média/std do treino.
     """
     def transformar(d):
         X_num = d[features_num].copy()
+
+        # Polinomiais ANTES de escalar (nos valores originais)
+        if polinomiais:
+            if "accommodates" in X_num.columns:
+                X_num["accommodates_sq"] = X_num["accommodates"] ** 2
+            if "n_amenities" in X_num.columns:
+                X_num["n_amenities_sq"] = X_num["n_amenities"] ** 2
+
         X_cat = pd.get_dummies(d[features_cat], drop_first=True).astype(int)
-        return pd.concat([X_num, X_cat], axis=1)
+        X = pd.concat([X_num, X_cat], axis=1)
+
+        # Interações: long_stay x room_type (one-hot já criado)
+        if interacoes and "long_stay" in X.columns:
+            for c in [col for col in X.columns if col.startswith("room_type_")]:
+                X[f"long_stay_x_{c}"] = X["long_stay"] * X[c]
+
+        return X
 
     X_treino = transformar(treino)
     Xs_outros = [transformar(d) for d in outros]
 
-    # Alinhar colunas (one-hot pode criar colunas diferentes em cada conjunto)
+    # Alinhar colunas
     for X in Xs_outros:
         X_treino, _ = X_treino.align(X, join="outer", axis=1, fill_value=0)
     Xs_outros = [X.reindex(columns=X_treino.columns, fill_value=0) for X in Xs_outros]
 
-    # Standardizar numéricas com média/std do treino
-    media = X_treino[features_num].mean()
-    desvio = X_treino[features_num].std().replace(0, 1)
-    X_treino[features_num] = (X_treino[features_num] - media) / desvio
+    # Standardizar TODAS as colunas numéricas contínuas (inclui os polinomiais)
+    cols_escalar = [c for c in features_num if c in X_treino.columns]
+    if polinomiais:
+        cols_escalar += [c for c in ["accommodates_sq", "n_amenities_sq"]
+                         if c in X_treino.columns]
+    media = X_treino[cols_escalar].mean()
+    desvio = X_treino[cols_escalar].std().replace(0, 1)
+    X_treino[cols_escalar] = (X_treino[cols_escalar] - media) / desvio
     for X in Xs_outros:
-        X[features_num] = (X[features_num] - media) / desvio
+        X[cols_escalar] = (X[cols_escalar] - media) / desvio
 
     y_treino = np.log(treino["price"])
     ys_outros = [np.log(d["price"]) for d in outros]
 
     return X_treino, Xs_outros, y_treino, ys_outros
 
+# ---------------------------------------------------------------------------
+# 9. GUARDAR MATRIZ FINAL EM DISCO
+# ---------------------------------------------------------------------------
+def guardar_matriz(X_treino, Xs_outros, y_treino, ys_outros,
+                   pasta="data/processado"):
+    """Guarda as matrizes de features e os vetores alvo em ficheiros CSV."""
+    os.makedirs(pasta, exist_ok=True)
+
+    X_treino.to_csv(f"{pasta}/X_treino.csv", index=False)
+    Xs_outros[0].to_csv(f"{pasta}/X_val.csv", index=False)
+    Xs_outros[1].to_csv(f"{pasta}/X_teste.csv", index=False)
+
+    y_treino.to_csv(f"{pasta}/y_treino.csv", index=False)
+    ys_outros[0].to_csv(f"{pasta}/y_val.csv", index=False)
+    ys_outros[1].to_csv(f"{pasta}/y_teste.csv", index=False)
+
+    print(f"Matrizes guardadas em {pasta}/")
 
 # ---------------------------------------------------------------------------
-# 9. ORQUESTRADORA
+# 10. Relações finais
 # ---------------------------------------------------------------------------
 def pipeline_completo(caminho="data/listings.csv",
                       estrategia_missing="simples",
                       estrategia_outliers="nenhuma",
-                      seed=42):
+                      seed=42,
+                      guardar=False):
     """Corre o pipeline todo com as estratégias escolhidas."""
     df = carregar_dados(caminho)
     df = criar_features_duracao(df)
@@ -232,4 +271,76 @@ def pipeline_completo(caminho="data/listings.csv",
     features_bin = [c for c in treino.columns if c.startswith("tem_")]
     features_num = features_num + features_bin
 
-    return preparar_matriz_final(treino, [val, teste], features_num, features_cat)
+    X_treino, Xs_outros, y_treino, ys_outros = preparar_matriz_final(
+        treino, [val, teste], features_num, features_cat
+    )
+
+    if guardar:
+        guardar_matriz(X_treino, Xs_outros, y_treino, ys_outros)
+
+    return X_treino, Xs_outros, y_treino, ys_outros
+
+
+# ---------------------------------------------------------------------------
+# 10. K-FOLD CROSS-VALIDATION (sem leakage)
+# ---------------------------------------------------------------------------
+def kfold_indices(n, k=5, seed=42):
+    """Divide n amostras em k folds. Devolve lista de (indices_treino, indices_val)."""
+    rng = np.random.default_rng(seed)
+    indices = rng.permutation(n)
+    folds = np.array_split(indices, k)
+    resultado = []
+    for i in range(k):
+        val_idx = folds[i]
+        treino_idx = np.concatenate([folds[j] for j in range(k) if j != i])
+        resultado.append((treino_idx, val_idx))
+    return resultado
+
+
+def preparar_fold(df, treino_idx, val_idx,
+                  estrategia_missing="simples",
+                  estrategia_outliers="nenhuma",
+                  polinomiais=False, interacoes=False):
+    """Prepara um fold, aprendendo tudo apenas no treino deste fold."""
+    treino = df.iloc[treino_idx].copy()
+    val = df.iloc[val_idx].copy()
+
+    treino, (val,) = tratar_missing(treino, [val], estrategia_missing)
+    treino, (val,) = tratar_outliers(treino, [val], estrategia_outliers)
+
+    features_num = ["accommodates", "bedrooms", "bathrooms", "beds",
+                    "minimum_nights", "noites", "n_amenities", "long_stay"]
+    features_cat = ["room_type", "property_type", "neighbourhood_cleansed"]
+    features_bin = [c for c in treino.columns if c.startswith("tem_")]
+    features_num = features_num + features_bin
+
+    return preparar_matriz_final(treino, [val], features_num, features_cat,
+                                  polinomiais=polinomiais, interacoes=interacoes)
+
+
+# ---------------------------------------------------------------------------
+# 11. FEATURES POLINOMIAIS E INTERAÇÕES
+# ---------------------------------------------------------------------------
+def adicionar_polinomiais_interacoes(X, polinomiais=True, interacoes=True):
+    """
+    Acrescenta à matriz X:
+      - termos polinomiais: quadrado de accommodates e de n_amenities
+      - interações: long_stay x (cada coluna de room_type)
+
+    Recebe e devolve um DataFrame.
+    """
+    X = X.copy()
+
+    if polinomiais:
+        if "accommodates" in X.columns:
+            X["accommodates_sq"] = X["accommodates"] ** 2
+        if "n_amenities" in X.columns:
+            X["n_amenities_sq"] = X["n_amenities"] ** 2
+
+    if interacoes:
+        cols_room = [c for c in X.columns if c.startswith("room_type_")]
+        if "long_stay" in X.columns:
+            for c in cols_room:
+                X[f"long_stay_x_{c}"] = X["long_stay"] * X[c]
+
+    return X
