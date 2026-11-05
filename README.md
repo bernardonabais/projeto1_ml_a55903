@@ -1,9 +1,42 @@
-# Projeto Prático 1 - Machine Learning: Aprendizagem Supervisionada
+# Previsão de preços do Airbnb em Hong Kong
 
-**Autor:** Bernardo Nabais
-**Cadeira:** Machine Learning
-**Curso:** Inteligência Artificial e Ciência de Dados, UBI
-**Ano letivo:** 2026/2027
+**Regressão linear e logística implementadas de raiz, com gradient descent e sem bibliotecas de machine learning.**
+
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![NumPy](https://img.shields.io/badge/NumPy-only-013243)
+![Sem libs de ML](https://img.shields.io/badge/scikit--learn-n%C3%A3o%20usado-critical)
+
+Dois modelos sobre 6 046 anúncios do Airbnb: um prevê o preço por noite, outro
+assinala os alojamentos no top 20% de preço dentro de grupos comparáveis. Toda a
+matemática — gradient descent, regularização L2, sigmoide, k-fold — está escrita
+à mão em `linear_regression.py` e `logistic_regression.py`.
+
+| | Métrica | Teste |
+|---|---|---|
+| **Regressão** (log-preço) | R² | **0.6746** |
+| | RMSE | 0.4989 |
+| **Classificação** (top 20%) | ROC-AUC | **0.8043** |
+| | F1 (threshold 0.273) | 0.4891 |
+
+<p align="center">
+  <img src="figures/preco_vs_log_preco.png" width="48%" alt="Distribuição do preço e do log-preço">
+  <img src="figures/curva_roc.png" width="48%" alt="Curva ROC do classificador">
+</p>
+
+### O que vale a pena ver aqui
+
+- **Nada é caixa preta.** As duas regressões são código próprio: inicialização,
+  gradiente, atualização de pesos, critério de paragem.
+- **Cada decisão de pré-processamento é testada, não assumida.** A tabela de
+  ablações em `report/ablacoes.csv` compara estratégias de imputação e de
+  outliers lado a lado — e mostra que duas delas não fizeram diferença nenhuma.
+- **O log-preço é a decisão que carrega o projeto:** o R² sobe de 0.188 para
+  0.660 só por mudar o alvo.
+- **O threshold foi afinado, não deixado em 0.5:** o recall passa de 0.165 para
+  0.574.
+
+**Autor:** Bernardo Nabais · **Cadeira:** Machine Learning · **Curso:**
+Inteligência Artificial e Ciência de Dados, UBI · **Ano letivo:** 2026/2027
 
 ---
 
@@ -38,7 +71,6 @@ qualquer das duas formas, bastando ajustar o nome.
 
 ---
 
-## 3. Estrutura do projeto
 ## 3. Estrutura do projeto
 
 ```text
@@ -249,6 +281,10 @@ aprendidos no treino.
 
 O threshold 0.273 foi selecionado por maximização do F1 na validação e aplicado
 ao teste sem novo ajuste.
+
+<p align="center">
+  <img src="figures/residuos.png" width="70%" alt="Análise de resíduos do modelo de regressão">
+</p>
 
 ### Conclusões principais
 
